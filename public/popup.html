@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Wordle Solver</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Wordle Solver</h1>
+      <span id="site" class="badge">—</span>
+    </header>
+
+    <section class="controls">
+      <button id="read">Read board</button>
+      <button id="type">Type top guess</button>
+      <button id="pick" title="Generic site: click your board to register it">Pick board</button>
+      <button id="reset">Reset</button>
+    </section>
+
+    <section class="mode">
+      <label><input type="checkbox" id="autoMode" /> Auto mode (also press Enter)</label>
+    </section>
+
+    <section class="status" id="status">Click "Read board" to begin.</section>
+
+    <section>
+      <h2>Top suggestions</h2>
+      <ol id="suggestions" class="suggestions"></ol>
+    </section>
+
+    <section>
+      <h2>Remaining (<span id="remainingCount">0</span>)</h2>
+      <div id="remainingSample" class="remaining"></div>
+    </section>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

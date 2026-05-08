@@ -1,0 +1,22 @@
+{
+  "name": "wordle-solver-extension",
+  "version": "0.1.0",
+  "description": "Chrome extension that solves Wordle puzzles using information-theoretic guessing.",
+  "private": true,
+  "scripts": {
+    "build": "webpack --mode=production",
+    "watch": "webpack --mode=development --watch",
+    "dev": "webpack --mode=development",
+    "test": "node --test --import tsx test/*.test.ts"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.268",
+    "@types/node": "^20.11.0",
+    "copy-webpack-plugin": "^12.0.2",
+    "ts-loader": "^9.5.1",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0",
+    "webpack": "^5.90.0",
+    "webpack-cli": "^5.1.4"
+  }
+}
