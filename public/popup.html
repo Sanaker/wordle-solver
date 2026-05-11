@@ -14,15 +14,37 @@
     <section class="controls">
       <button id="read">Read board</button>
       <button id="type">Type top guess</button>
+      <button id="autoSolve" title="Enable auto mode and start solving">Auto-solve</button>
       <button id="pick" title="Generic site: click your board to register it">Pick board</button>
       <button id="reset">Reset</button>
     </section>
 
     <section class="mode">
-      <label><input type="checkbox" id="autoMode" /> Auto mode (also press Enter)</label>
+      <label><input type="checkbox" id="autoMode" /> Auto mode (submit + wait)</label>
+    </section>
+
+    <!-- Settings panel (collapsed by default) -->
+    <section class="collapsible">
+      <button id="settingsToggle" class="toggle-btn">Settings ▸</button>
+      <div id="settingsPanel" style="display:none" class="panel">
+        <label class="setting-row">
+          <span>Opening word</span>
+          <input type="text" id="openerInput" maxlength="5" placeholder="salet" class="opener-input" />
+        </label>
+        <label class="setting-row">
+          <input type="checkbox" id="hardMode" />
+          <span>Hard mode (only use revealed hints)</span>
+        </label>
+      </div>
     </section>
 
     <section class="status" id="status">Click "Read board" to begin.</section>
+
+    <!-- Mini board -->
+    <div id="miniBoard" class="mini-board"></div>
+
+    <!-- Quordle board badges -->
+    <div id="quordleInfo" class="quordle-info" style="display:none"></div>
 
     <section>
       <h2>Top suggestions</h2>
@@ -32,6 +54,14 @@
     <section>
       <h2>Remaining (<span id="remainingCount">0</span>)</h2>
       <div id="remainingSample" class="remaining"></div>
+    </section>
+
+    <!-- Stats panel (collapsed by default) -->
+    <section class="collapsible">
+      <button id="statsToggle" class="toggle-btn">Stats ▸</button>
+      <div id="statsPanel" style="display:none" class="panel">
+        <div id="statsBody"></div>
+      </div>
     </section>
 
     <script src="popup.js"></script>

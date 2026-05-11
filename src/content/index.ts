@@ -1,4 +1,4 @@
-import { pickAdapter, NytAdapter, WordlyAdapter, GenericAdapter } from '../adapters/index.js';
+import { pickAdapter, NytAdapter, WordlyAdapter, DataStateAdapter, QuordleAdapter, GenericAdapter } from '../adapters/index.js';
 import type { SiteAdapter } from '../adapters/types.js';
 import type {
   AnyRequest,
@@ -36,22 +36,47 @@ chrome.runtime.onMessage.addListener((msg: AnyRequest, _sender, sendResponse) =>
     try {
       if (msg.type === 'content:readBoard') {
         const a = await getAdapter(true);
-        const board = a.detect() ? a.readBoard() : { rows: [] };
+        const detected = a.detect();
+        const board = detected ? a.readBoard() : { rows: [] };
+        const boards = detected && typeof (a as { readBoards?(): unknown }).readBoards === 'function'
+          ? (a as { readBoards(): import('../adapters/types.js').Board[] }).readBoards()
+          : undefined;
         const r: ReadBoardResponse = {
           type: 'content:board',
-          adapterId: a.detect() ? a.id : null,
-          board
+          adapterId: detected ? a.id : null,
+          board,
+          boards
         };
         sendResponse(r);
       } else if (msg.type === 'content:type') {
         const a = await getAdapter();
         if (!a.detect()) throw new Error('No adapter detected for this page.');
+
+        // Count committed rows before submit so we can detect if word was accepted.
+        const boardBefore = a.readBoard();
+        const committedBefore = boardBefore.rows.filter(
+          (r) => r.letters.every((l) => l.length === 1) && r.states.every((s) => s !== 'empty')
+        ).length;
+
         await a.typeGuess(msg.word);
         if (msg.submit) {
           await sleep(80);
           await a.submit();
         }
-        const r: TypeGuessResponse = { type: 'content:type:ok' };
+
+        let wordNotFound = false;
+        if (msg.submit && msg.waitForCommit) {
+          // Wait up to 4 s for a new committed row to appear.
+          const accepted = await waitForCommit(a, committedBefore, 4000);
+          if (!accepted) {
+            // Check adapter-specific rejection signal too.
+            wordNotFound = typeof (a as { wordNotFound?(): boolean }).wordNotFound === 'function'
+              ? (a as { wordNotFound(): boolean }).wordNotFound()
+              : true;
+          }
+        }
+
+        const r: TypeGuessResponse = { type: 'content:type:ok', wordNotFound };
         sendResponse(r);
       } else if (msg.type === 'content:pickBoard') {
         const sel = await pickBoardOverlay();
@@ -72,6 +97,27 @@ chrome.runtime.onMessage.addListener((msg: AnyRequest, _sender, sendResponse) =>
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * Poll until the number of committed rows increases (animation complete) or timeout.
+ * Returns true if accepted, false if timed out (word rejected).
+ */
+async function waitForCommit(
+  adapter: import('../adapters/types.js').SiteAdapter,
+  prevCommitted: number,
+  timeout: number
+): Promise<boolean> {
+  const end = Date.now() + timeout;
+  while (Date.now() < end) {
+    await sleep(200);
+    const board = adapter.readBoard();
+    const committed = board.rows.filter(
+      (r) => r.letters.every((l) => l.length === 1) && r.states.every((s) => s !== 'empty')
+    ).length;
+    if (committed > prevCommitted) return true;
+  }
+  return false;
 }
 
 /**
@@ -175,6 +221,8 @@ function cssEscape(s: string): string {
   return s.replace(/([^a-zA-Z0-9_-])/g, '\\$1');
 }
 
-// Suppress "NytAdapter / WordlyAdapter is unused" if tree-shaking complains.
+// Suppress "unused" warnings for adapters imported for type-system completeness.
 void NytAdapter;
 void WordlyAdapter;
+void DataStateAdapter;
+void QuordleAdapter;

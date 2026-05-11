@@ -53,11 +53,15 @@ h2 {
 
 .controls {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 5px;
+  margin-bottom: 4px;
+}
+.controls button:last-child {
+  grid-column: span 1;
 }
 
-button {
+/* ── Collapsible settings / stats ─────────────────────────────── */
   font: inherit;
   padding: 6px 8px;
   border: 1px solid #d0d0d0;
@@ -121,4 +125,159 @@ ol.suggestions {
   word-spacing: 4px;
   max-height: 80px;
   overflow: auto;
+}
+
+/* ── Collapsible settings / stats ─────────────────────────────── */
+.collapsible { margin: 6px 0; }
+
+.toggle-btn {
+  font: inherit;
+  font-size: 11px;
+  color: var(--muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 0;
+  letter-spacing: 0.03em;
+}
+.toggle-btn:hover { color: var(--fg); }
+
+.panel {
+  background: #f8f8f8;
+  border: 1px solid #e8e8e8;
+  border-radius: 4px;
+  padding: 8px;
+  margin-top: 4px;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+  font-size: 12px;
+}
+.setting-row span { flex: 1; }
+.opener-input {
+  width: 60px;
+  font: inherit;
+  font-family: ui-monospace, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 3px 6px;
+  border: 1px solid #d0d0d0;
+  border-radius: 4px;
+  text-align: center;
+}
+
+/* ── Mini board ───────────────────────────────────────────────── */
+.mini-board {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 6px 0;
+  min-height: 0;
+}
+.mini-row {
+  display: flex;
+  gap: 2px;
+}
+.mini-cell {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: ui-monospace, "SF Mono", monospace;
+  border-radius: 3px;
+  color: #fff;
+  border: 1px solid rgba(0,0,0,0.08);
+}
+.mini-cell--correct  { background: var(--green); }
+.mini-cell--present  { background: var(--yellow); color: #fff; }
+.mini-cell--absent   { background: var(--gray); }
+.mini-cell--empty    { background: #e0e0e0; color: #999; border-color: #ccc; }
+
+/* ── Quordle board badges ─────────────────────────────────────── */
+.quordle-info {
+  display: flex;
+  gap: 6px;
+  margin: 4px 0;
+  flex-wrap: wrap;
+}
+.qboard-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 22px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #eee;
+  color: #555;
+}
+.qboard-badge.solved {
+  background: var(--green);
+  color: #fff;
+}
+
+/* ── Stats ────────────────────────────────────────────────────── */
+.stats-summary {
+  display: flex;
+  justify-content: space-around;
+  margin-bottom: 10px;
+  text-align: center;
+}
+.stat-val { font-size: 18px; font-weight: 700; line-height: 1.2; }
+.stat-key { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+
+.dist-title {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 8px 0 4px;
+}
+
+.bar-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0;
+}
+.bar-label {
+  width: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: right;
+}
+.bar-track {
+  flex: 1;
+  background: #e8e8e8;
+  border-radius: 3px;
+  height: 18px;
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  background: var(--green);
+  border-radius: 3px;
+  min-width: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  transition: width 0.3s ease;
+}
+
+.no-stats {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 4px 0;
 }
