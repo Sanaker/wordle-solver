@@ -12,6 +12,8 @@ export interface SuggestRequest {
   topN?: number;
   opener?: string;
   hardMode?: boolean;
+  /** Detected word length from the board (defaults to 5). */
+  wordLength?: number;
 }
 
 export interface ScoredSuggestion {
@@ -31,6 +33,8 @@ export interface SuggestResponse {
   boardRemaining?: number[];
   /** True if all boards are solved (Quordle mode). */
   allSolved?: boolean;
+  /** True when the board uses non-5-letter words (solver unsupported). */
+  wordLengthUnsupported?: boolean;
 }
 
 export interface ResetRequest {
@@ -74,12 +78,20 @@ export interface PickBoardResponse {
   rootSelector: string | null;
 }
 
+export interface UndoRequest {
+  type: 'content:undo';
+}
+export interface UndoResponse {
+  type: 'content:undo:ok';
+}
+
 export type AnyRequest =
   | SuggestRequest
   | ResetRequest
   | ReadBoardRequest
   | TypeGuessRequest
-  | PickBoardRequest;
+  | PickBoardRequest
+  | UndoRequest;
 
 export type AnyResponse =
   | SuggestResponse
@@ -87,4 +99,5 @@ export type AnyResponse =
   | ReadBoardResponse
   | TypeGuessResponse
   | PickBoardResponse
+  | UndoResponse
   | { type: 'error'; message: string };

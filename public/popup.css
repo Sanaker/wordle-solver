@@ -57,9 +57,6 @@ h2 {
   gap: 5px;
   margin-bottom: 4px;
 }
-.controls button:last-child {
-  grid-column: span 1;
-}
 
 /* ── Collapsible settings / stats ─────────────────────────────── */
   font: inherit;
@@ -281,3 +278,36 @@ ol.suggestions {
   color: var(--muted);
   margin: 4px 0;
 }
+
+/* ── Colorblind mode ──────────────────────────────────────────── */
+body.colorblind { --green: #1a73e8; --yellow: #e8710a; }
+
+/* ── Suggestion items ─────────────────────────────────────────── */
+#suggestions li.suggestion-item {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  padding: 3px 4px;
+  border-radius: 4px;
+  list-style: none;
+}
+#suggestions li.suggestion-item:hover { background: #f0f0f0; }
+#suggestions li.suggestion-item.focused { background: #e8f0fe; outline: 2px solid var(--accent); }
+.suggestion-left {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ── Copy button ──────────────────────────────────────────────── */
+.copy-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted);
+  padding: 0 2px;
+  line-height: 1;
+}
+.copy-btn:hover { color: var(--fg); }

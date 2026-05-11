@@ -3,6 +3,7 @@ import type {
   SuggestResponse,
   TypeGuessRequest,
   TypeGuessResponse,
+  UndoRequest,
   AnyResponse
 } from '../messages.js';
 import type { Board } from '../adapters/types.js';
@@ -22,6 +23,7 @@ const openerInputEl     = $<HTMLInputElement>('openerInput');
 const miniBoardEl       = $<HTMLDivElement>('miniBoard');
 const statsBodyEl       = $<HTMLDivElement>('statsBody');
 const quordleInfoEl     = $<HTMLDivElement>('quordleInfo');
+const colorblindEl      = $<HTMLInputElement>('colorblind');
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let lastSuggestions: SuggestResponse['suggestions'] = [];
@@ -29,6 +31,7 @@ let lastBoard: Board | null = null;
 let lastBoards: Board[] | undefined;
 let isQuordle = false;
 let gameTracked = false;
+let focusedSuggIdx = -1;   // for keyboard navigation
 
 // ── Storage helpers ───────────────────────────────────────────────────────────
 interface SiteStats {
@@ -64,9 +67,17 @@ async function activeTabOrigin(): Promise<string> {
   return tab?.url ? new URL(tab.url).origin : 'unknown';
 }
 
+// Track which tab already has the content script so we don't re-inject it
+// on every sendToTab call. Re-injecting each time causes duplicate
+// onMessage listeners — after 3-4 rows there are 6+ instances all typing
+// the same word simultaneously, corrupting the board state.
+let injectedTabId: number | null = null;
+
 async function ensureContentScript(tabId: number): Promise<void> {
+  if (tabId === injectedTabId) return;
   try {
     await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
+    injectedTabId = tabId;
   } catch (e) {
     throw new Error(`Cannot run on this page: ${(e as Error).message}`);
   }
@@ -75,7 +86,14 @@ async function ensureContentScript(tabId: number): Promise<void> {
 async function sendToTab(msg: unknown): Promise<AnyResponse> {
   const tabId = await activeTabId();
   await ensureContentScript(tabId);
-  return (await chrome.tabs.sendMessage(tabId, msg)) as AnyResponse;
+  try {
+    return (await chrome.tabs.sendMessage(tabId, msg)) as AnyResponse;
+  } catch {
+    // Content script is gone (e.g. tab was reloaded). Re-inject once and retry.
+    injectedTabId = null;
+    await ensureContentScript(tabId);
+    return (await chrome.tabs.sendMessage(tabId, msg)) as AnyResponse;
+  }
 }
 
 async function sendToBackground(msg: unknown): Promise<AnyResponse> {
@@ -119,10 +137,20 @@ function renderQuordleInfo(boardRemaining: number[] | undefined): void {
 
 function renderSuggestions(res: SuggestResponse): void {
   lastSuggestions = res.suggestions;
+  focusedSuggIdx = -1;
   suggestionsEl.innerHTML = '';
-  for (const s of res.suggestions) {
+
+  for (let idx = 0; idx < res.suggestions.length; idx++) {
+    const s = res.suggestions[idx];
     const li = document.createElement('li');
+    li.className = 'suggestion-item';
+    li.dataset.idx = String(idx);
+    li.setAttribute('role', 'option');
+    li.setAttribute('aria-selected', 'false');
+    li.title = 'Click to type this guess';
+
     const left = document.createElement('span');
+    left.className = 'suggestion-left';
     if (s.isCandidate) {
       const dot = document.createElement('span');
       dot.className = 'candidate-dot';
@@ -133,16 +161,43 @@ function renderSuggestions(res: SuggestResponse): void {
     word.className = 'word';
     word.textContent = s.word;
     left.appendChild(word);
+
     const meta = document.createElement('span');
     meta.className = 'meta';
     meta.textContent = s.entropy > 0 ? `${s.entropy.toFixed(2)} bits` : '';
+
+    // Copy button
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'copy-btn';
+    copyBtn.title = 'Copy word';
+    copyBtn.textContent = '⎘';
+    copyBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      navigator.clipboard.writeText(s.word).then(() => {
+        copyBtn.textContent = '✓';
+        setTimeout(() => { copyBtn.textContent = '⎘'; }, 1200);
+      });
+    });
+
     li.appendChild(left);
     li.appendChild(meta);
+    li.appendChild(copyBtn);
+
+    // Click anywhere on the row (except copy btn) to type the word
+    li.addEventListener('click', () => run(() => typeTopGuess(idx)));
+
     suggestionsEl.appendChild(li);
   }
+
   remainingCountEl.textContent = String(res.remaining);
   remainingSampleEl.textContent = res.remainingSample.join(' ');
   renderQuordleInfo(res.boardRemaining);
+
+  // Word-length not supported
+  if ((res as SuggestResponse & { wordLengthUnsupported?: boolean }).wordLengthUnsupported) {
+    setStatus('Only 5-letter Wordle variants are supported.', true);
+    return;
+  }
 
   if (res.solved || res.allSolved) {
     setStatus('Solved!');
@@ -226,6 +281,10 @@ async function readAndSuggest(): Promise<void> {
 
   renderMiniBoard(boardRes.board);
 
+  // Detect word length from first non-empty row.
+  const firstRow = boardRes.board.rows.find((r) => r.letters.some((l) => l.length === 1));
+  const wordLength = firstRow?.letters.length ?? 5;
+
   const opener = openerInputEl.value.trim().toLowerCase() || undefined;
   const req: SuggestRequest = {
     type: 'suggest',
@@ -233,7 +292,8 @@ async function readAndSuggest(): Promise<void> {
     boards: lastBoards,
     topN: 8,
     opener,
-    hardMode: hardModeEl.checked
+    hardMode: hardModeEl.checked,
+    wordLength
   };
   const res = await sendToBackground(req);
   if (res.type !== 'suggest:ok') {
@@ -293,8 +353,15 @@ async function typeTopGuess(suggestionIndex = 0): Promise<void> {
   }
 }
 
+async function undoRow(): Promise<void> {
+  setStatus('Clearing current row…');
+  const req: UndoRequest = { type: 'content:undo' };
+  const res = await sendToTab(req);
+  if (res.type === 'error') { setStatus(res.message, true); return; }
+  setStatus('Row cleared.');
+}
+
 async function pickBoard(): Promise<void> {
-  setStatus('Open the page tab; click your board.');
   const res = await sendToTab({ type: 'content:pickBoard' });
   if (res.type !== 'content:pickBoard:ok') {
     setStatus(res.type === 'error' ? res.message : 'Pick failed.', true);
@@ -310,6 +377,7 @@ async function reset(): Promise<void> {
   lastBoards = undefined;
   isQuordle = false;
   gameTracked = false;
+  focusedSuggIdx = -1;
   suggestionsEl.innerHTML = '';
   miniBoardEl.innerHTML = '';
   quordleInfoEl.style.display = 'none';
@@ -327,6 +395,7 @@ function wire(): void {
     chrome.storage.sync.set({ autoMode: true });
     run(readAndSuggest);
   });
+  $<HTMLButtonElement>('undo').addEventListener('click', () => run(undoRow));
   $<HTMLButtonElement>('pick').addEventListener('click', () => run(pickBoard));
   $<HTMLButtonElement>('reset').addEventListener('click', () => run(reset));
 
@@ -345,10 +414,33 @@ function wire(): void {
     if (!open) run(renderStats);
   });
 
-  chrome.storage.sync.get(['autoMode', 'hardMode', 'opener']).then((v) => {
+  // Keyboard navigation for suggestions list
+  document.addEventListener('keydown', (e) => {
+    const items = Array.from(suggestionsEl.querySelectorAll<HTMLLIElement>('.suggestion-item'));
+    if (items.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      focusedSuggIdx = Math.min(focusedSuggIdx + 1, items.length - 1);
+      updateFocusHighlight(items);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      focusedSuggIdx = Math.max(focusedSuggIdx - 1, 0);
+      updateFocusHighlight(items);
+    } else if (e.key === 'Enter' && focusedSuggIdx >= 0) {
+      e.preventDefault();
+      run(() => typeTopGuess(focusedSuggIdx));
+    } else if (e.key === 'Escape') {
+      focusedSuggIdx = -1;
+      updateFocusHighlight(items);
+    }
+  });
+
+  chrome.storage.sync.get(['autoMode', 'hardMode', 'opener', 'colorblind']).then((v) => {
     autoModeEl.checked = !!v.autoMode;
     hardModeEl.checked = !!v.hardMode;
     openerInputEl.value = (v.opener as string) || '';
+    colorblindEl.checked = !!v.colorblind;
+    applyColorblind(colorblindEl.checked);
   });
 
   autoModeEl.addEventListener('change', () =>
@@ -357,6 +449,22 @@ function wire(): void {
     chrome.storage.sync.set({ hardMode: hardModeEl.checked }));
   openerInputEl.addEventListener('change', () =>
     chrome.storage.sync.set({ opener: openerInputEl.value.trim().toLowerCase() }));
+  colorblindEl.addEventListener('change', () => {
+    chrome.storage.sync.set({ colorblind: colorblindEl.checked });
+    applyColorblind(colorblindEl.checked);
+  });
+}
+
+function updateFocusHighlight(items: HTMLLIElement[]): void {
+  items.forEach((li, i) => {
+    li.classList.toggle('focused', i === focusedSuggIdx);
+    li.setAttribute('aria-selected', String(i === focusedSuggIdx));
+  });
+  if (focusedSuggIdx >= 0) items[focusedSuggIdx]?.scrollIntoView({ block: 'nearest' });
+}
+
+function applyColorblind(on: boolean): void {
+  document.body.classList.toggle('colorblind', on);
 }
 
 function run(fn: () => Promise<void>): void {

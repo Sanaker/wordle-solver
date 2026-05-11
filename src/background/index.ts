@@ -1,6 +1,5 @@
 import { loadAnswers, loadAllowed } from '../solver/wordlists.js';
-import { rankGuesses } from '../solver/entropy.js';
-import { expectedEntropy } from '../solver/entropy.js';
+import { rankGuesses, expectedEntropy } from '../solver/entropy.js';
 import { scorePattern, encodePattern } from '../solver/pattern.js';
 import { DEFAULT_OPENER } from '../solver/precomputed.js';
 import type { Board, BoardRow, TileState } from '../adapters/types.js';
@@ -39,6 +38,20 @@ chrome.runtime.onMessage.addListener((msg: AnyRequest, _sender, sendResponse) =>
 async function handleSuggest(req: SuggestRequest): Promise<SuggestResponse> {
   const answers = await loadAnswers();
   const allowed = await loadAllowed();
+
+  // Word-length guard: our word lists are 5-letter only.
+  const wordLength = req.wordLength ?? 5;
+  if (wordLength !== 5) {
+    return {
+      type: 'suggest:ok',
+      suggestions: [],
+      remaining: 0,
+      remainingSample: [],
+      solved: false,
+      invalidRows: [],
+      wordLengthUnsupported: true
+    } as SuggestResponse & { wordLengthUnsupported: boolean };
+  }
 
   // Multi-board mode (Quordle)
   if (req.boards && req.boards.length > 1) {
@@ -89,8 +102,10 @@ async function handleSuggest(req: SuggestRequest): Promise<SuggestResponse> {
   }
 
   // Hard mode: filter guess pool to only words satisfying revealed constraints.
-  let guessPool: readonly string[] = pool.length <= 2 ? pool : allowed;
-  if (req.hardMode) {
+  // Also force candidates-only on the last turn (guessing a non-answer on turn 6 = instant loss).
+  const isLastTurn = committed.length >= 5 && !solved;
+  let guessPool: readonly string[] = (pool.length <= 2 || isLastTurn) ? pool : allowed;
+  if (req.hardMode && !isLastTurn) {
     guessPool = applyHardModeFilter(guessPool, committed);
   }
   if (guessPool.length === 0) guessPool = pool; // fallback if constraints over-constrain

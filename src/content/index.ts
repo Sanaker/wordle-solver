@@ -53,9 +53,12 @@ chrome.runtime.onMessage.addListener((msg: AnyRequest, _sender, sendResponse) =>
         if (!a.detect()) throw new Error('No adapter detected for this page.');
 
         // Count committed rows before submit so we can detect if word was accepted.
+        // Only count rows with REVEALED states (absent/present/correct), NOT 'tbd'
+        // ('tbd' means letters are typed but not yet submitted, which would cause
+        // waitForCommit to return prematurely before the animation has run).
         const boardBefore = a.readBoard();
         const committedBefore = boardBefore.rows.filter(
-          (r) => r.letters.every((l) => l.length === 1) && r.states.every((s) => s !== 'empty')
+          (r) => r.letters.every((l) => l.length === 1) && r.states.every(isRevealedState)
         ).length;
 
         await a.typeGuess(msg.word);
@@ -66,17 +69,37 @@ chrome.runtime.onMessage.addListener((msg: AnyRequest, _sender, sendResponse) =>
 
         let wordNotFound = false;
         if (msg.submit && msg.waitForCommit) {
-          // Wait up to 4 s for a new committed row to appear.
-          const accepted = await waitForCommit(a, committedBefore, 4000);
+          // Wait up to 6 s for a new committed row to appear.
+          const accepted = await waitForCommit(a, committedBefore, 6000);
           if (!accepted) {
-            // Check adapter-specific rejection signal too.
-            wordNotFound = typeof (a as { wordNotFound?(): boolean }).wordNotFound === 'function'
-              ? (a as { wordNotFound(): boolean }).wordNotFound()
-              : true;
+            // Timeout — do a final board check before declaring the word rejected.
+            // (waitForCommit can miss the transition if the animation window fell
+            // between two 200 ms polls right at the boundary.)
+            const boardNow = a.readBoard();
+            const committedNow = boardNow.rows.filter(
+              (r) => r.letters.every((l) => l.length === 1) && r.states.every(isRevealedState)
+            ).length;
+            if (committedNow > committedBefore) {
+              // Word was actually accepted; we just missed the poll window.
+              wordNotFound = false;
+            } else {
+              // Check adapter-specific rejection signal.
+              wordNotFound = typeof (a as { wordNotFound?(): boolean }).wordNotFound === 'function'
+                ? (a as { wordNotFound(): boolean }).wordNotFound()
+                : true;
+            }
           }
         }
 
         const r: TypeGuessResponse = { type: 'content:type:ok', wordNotFound };
+        sendResponse(r);
+      } else if (msg.type === 'content:undo') {
+        // Press Backspace 5× to clear the current unsubmitted row.
+        for (let i = 0; i < 5; i++) {
+          dispatchBackspace();
+          await sleep(30);
+        }
+        const r: import('../messages.js').UndoResponse = { type: 'content:undo:ok' };
         sendResponse(r);
       } else if (msg.type === 'content:pickBoard') {
         const sel = await pickBoardOverlay();
@@ -103,6 +126,11 @@ function sleep(ms: number): Promise<void> {
  * Poll until the number of committed rows increases (animation complete) or timeout.
  * Returns true if accepted, false if timed out (word rejected).
  */
+/** True only for a fully-revealed tile state (animation complete). */
+function isRevealedState(s: string): boolean {
+  return s === 'correct' || s === 'present' || s === 'absent';
+}
+
 async function waitForCommit(
   adapter: import('../adapters/types.js').SiteAdapter,
   prevCommitted: number,
@@ -112,8 +140,9 @@ async function waitForCommit(
   while (Date.now() < end) {
     await sleep(200);
     const board = adapter.readBoard();
+    // A row is only counted once its tile animation has completed (all states revealed).
     const committed = board.rows.filter(
-      (r) => r.letters.every((l) => l.length === 1) && r.states.every((s) => s !== 'empty')
+      (r) => r.letters.every((l) => l.length === 1) && r.states.every(isRevealedState)
     ).length;
     if (committed > prevCommitted) return true;
   }
@@ -219,6 +248,12 @@ function cssPath(el: Element): string {
 
 function cssEscape(s: string): string {
   return s.replace(/([^a-zA-Z0-9_-])/g, '\\$1');
+}
+
+/** Dispatch a Backspace key event to the page (works for all adapters). */
+function dispatchBackspace(): void {
+  const ev = new KeyboardEvent('keydown', { key: 'Backspace', code: 'Backspace', bubbles: true, cancelable: true });
+  document.dispatchEvent(ev);
 }
 
 // Suppress "unused" warnings for adapters imported for type-system completeness.
